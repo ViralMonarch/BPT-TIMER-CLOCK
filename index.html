@@ -1,0 +1,2542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Color People Time</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DSEG7+Classic:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/p5.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #050505;
+    --glow: #00ff41;
+    --glow-dim: #00ff4133;
+    --glow-mid: #00ff4166;
+    --glow-real: #ff9f00;
+    --glow-real-dim: #ff9f0033;
+    --glow-real-mid: #ff9f0066;
+    --text-dim: #0b3d14;
+    --text-dim-real: #3d2a0b;
+    --surface: #111;
+    --border: #1a3a1a;
+    --font-segment: 'DSEG7 Classic', monospace;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--glow);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+  }
+
+  /* SVG grain noise — 0.02 opacity over #050505 chassis */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    opacity: 0.02;
+    pointer-events: none;
+    z-index: 50;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.72' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 200px 200px;
+    background-repeat: repeat;
+  }
+
+  /* CRT scanline overlay */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0, 0, 0, 0.08) 2px,
+      rgba(0, 0, 0, 0.08) 4px
+    );
+    pointer-events: none;
+    z-index: 100;
+  }
+
+  .container {
+    width: 100%;
+    max-width: 600px;
+    padding: 20px;
+  }
+
+  /* Tab bar */
+  .tabs {
+    display: flex;
+    justify-content: center;
+    gap: 40px;
+    margin-bottom: 40px;
+  }
+
+  .tab-btn {
+    background: none;
+    border: none;
+    color: #2a5a2a;
+    font-family: inherit;
+    font-size: 1rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    cursor: pointer;
+    padding: 8px 4px;
+    position: relative;
+    transition: color 0.3s;
+  }
+
+  .tab-btn.active {
+    color: var(--glow);
+  }
+
+  .tab-btn::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: var(--glow);
+    transform: scaleX(0);
+    transition: transform 0.3s;
+    box-shadow: 0 0 8px var(--glow);
+  }
+
+  .tab-btn.active::after {
+    transform: scaleX(1);
+  }
+
+  .tab-btn:hover { color: var(--glow); }
+
+  /* Panel */
+  .panel { display: none; text-align: center; }
+  .panel.active { display: block; }
+
+  /* Segment display (background "8" characters for LCD look) */
+  .time-display {
+    position: relative;
+    font-family: var(--font-segment);
+    font-size: clamp(3rem, 12vw, 6rem);
+    letter-spacing: 4px;
+    color: var(--glow);
+    text-shadow:
+      0 0 10px var(--glow),
+      0 0 20px var(--glow-mid),
+      0 0 40px var(--glow-dim),
+      0 0 80px var(--glow-dim);
+    padding: 20px 0;
+    user-select: none;
+  }
+
+  .time-bg {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-segment);
+    font-size: clamp(3rem, 12vw, 6rem);
+    letter-spacing: 4px;
+    color: var(--text-dim);
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  .time-fg {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* AM/PM badge */
+  .ampm {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 0.3em;
+    vertical-align: super;
+    margin-left: 6px;
+    opacity: 0.9;
+  }
+
+  .date-display {
+    font-size: 1rem;
+    color: #2a8a2a;
+    letter-spacing: 3px;
+    margin-top: 4px;
+    text-transform: uppercase;
+  }
+
+  .format-toggle {
+    margin-top: 20px;
+  }
+
+  .format-toggle button {
+    background: none;
+    border: 1px solid var(--border);
+    color: #2a5a2a;
+    padding: 4px 14px;
+    font-size: 0.75rem;
+    letter-spacing: 1px;
+    cursor: pointer;
+    border-radius: 3px;
+    transition: all 0.3s;
+  }
+
+  .format-toggle button:hover,
+  .format-toggle button.active {
+    color: var(--glow);
+    border-color: var(--glow);
+    box-shadow: 0 0 8px var(--glow-dim);
+  }
+
+  /* Timer panel */
+  .timer-display {
+    font-family: var(--font-segment);
+    font-size: clamp(3rem, 12vw, 6rem);
+    letter-spacing: 4px;
+    color: var(--glow);
+    text-shadow:
+      0 0 10px var(--glow),
+      0 0 20px var(--glow-mid),
+      0 0 40px var(--glow-dim),
+      0 0 80px var(--glow-dim);
+    padding: 20px 0;
+    position: relative;
+    cursor: pointer;
+    transition: color 0.3s, text-shadow 0.3s;
+  }
+
+  .timer-display .time-bg {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.3s;
+  }
+
+  /* Real-time reveal style */
+  .timer-display.show-real {
+    color: var(--glow-real);
+    text-shadow:
+      0 0 10px var(--glow-real),
+      0 0 20px var(--glow-real-mid),
+      0 0 40px var(--glow-real-dim),
+      0 0 80px var(--glow-real-dim);
+  }
+
+  .timer-display.show-real .time-bg {
+    color: var(--text-dim-real);
+  }
+
+  /* Mode label below timer */
+  .mode-label {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 0.75rem;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-top: -10px;
+    margin-bottom: 16px;
+    color: #2a8a2a;
+    transition: color 0.3s;
+    user-select: none;
+  }
+
+  .mode-label.real {
+    color: #8a6a2a;
+  }
+
+  .controls {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--glow);
+    font-family: inherit;
+    font-size: 0.85rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 10px 28px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.3s;
+    min-width: 110px;
+  }
+
+  .btn:hover {
+    border-color: var(--glow);
+    box-shadow: 0 0 15px var(--glow-dim), inset 0 0 15px var(--glow-dim);
+    text-shadow: 0 0 8px var(--glow);
+  }
+
+  .btn:active {
+    background: var(--glow-dim);
+  }
+
+  .btn.primary {
+    border-color: var(--glow);
+    box-shadow: 0 0 8px var(--glow-dim);
+  }
+
+  /* Timer finished flash animation */
+  @keyframes flash {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.2; }
+  }
+
+  .timer-done .timer-display {
+    animation: flash 0.5s infinite;
+    color: #ff3333;
+    text-shadow:
+      0 0 10px #ff3333,
+      0 0 20px #ff333366,
+      0 0 40px #ff333333;
+  }
+
+  /* Preset buttons for time dilation */
+  .presets {
+    display: flex;
+    justify-content: center;
+    gap: 14px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+
+  .preset-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--glow);
+    font-family: inherit;
+    font-size: 1rem;
+    padding: 14px 28px;
+    border-radius: 6px;
+    cursor: pointer;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    transition: all 0.3s;
+  }
+
+  .preset-btn:hover {
+    border-color: var(--glow);
+    box-shadow: 0 0 15px var(--glow-dim), inset 0 0 15px var(--glow-dim);
+    text-shadow: 0 0 8px var(--glow);
+  }
+
+  .preset-btn:active {
+    background: var(--glow-dim);
+  }
+
+  /* Custom time input */
+  .custom-divider {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin: 16px 0;
+    color: #2a5a2a;
+    font-size: 0.75rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  .custom-divider::before,
+  .custom-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  .custom-input {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .custom-input input {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--glow);
+    font-family: var(--font-segment);
+    font-size: 1.4rem;
+    text-align: center;
+    width: 64px;
+    padding: 10px 6px;
+    border-radius: 4px;
+    outline: none;
+    text-shadow: 0 0 8px var(--glow-dim);
+    -moz-appearance: textfield;
+  }
+
+  .custom-input input::-webkit-inner-spin-button,
+  .custom-input input::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  .custom-input input:focus {
+    border-color: var(--glow);
+    box-shadow: 0 0 10px var(--glow-dim);
+  }
+
+  .custom-input .sep {
+    font-family: var(--font-segment);
+    font-size: 1.4rem;
+    color: var(--glow);
+    text-shadow: 0 0 8px var(--glow-dim);
+  }
+
+  .custom-input .multiplier-sep {
+    font-size: 1.6rem;
+    color: var(--glow);
+    text-shadow: 0 0 8px var(--glow-dim);
+    margin: 0 4px;
+  }
+
+  .custom-input .input-label {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 0.6rem;
+    color: #2a5a2a;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    display: block;
+    margin-top: 2px;
+    text-align: center;
+  }
+
+  .custom-input .input-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  /* Clock dilation presets */
+  .clock-presets {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+  }
+
+  .clock-preset-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--glow);
+    font-family: inherit;
+    font-size: 0.85rem;
+    padding: 10px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    transition: all 0.3s;
+  }
+
+  .clock-preset-btn:hover,
+  .clock-preset-btn.active {
+    border-color: var(--glow);
+    box-shadow: 0 0 15px var(--glow-dim), inset 0 0 15px var(--glow-dim);
+    text-shadow: 0 0 8px var(--glow);
+  }
+
+  .clock-preset-btn:active { background: var(--glow-dim); }
+
+  /* Clock dilated state */
+  .time-display.dilated { cursor: pointer; }
+
+  .time-display.show-real {
+    color: var(--glow-real);
+    text-shadow:
+      0 0 10px var(--glow-real),
+      0 0 20px var(--glow-real-mid),
+      0 0 40px var(--glow-real-dim),
+      0 0 80px var(--glow-real-dim);
+    transition: color 0.3s, text-shadow 0.3s;
+  }
+
+  .time-display.show-real .time-bg {
+    color: var(--text-dim-real);
+  }
+
+  /* ─── App reveal ─── */
+  #main-app-content {
+    opacity: 0;
+    transform: scale(1.5) translateZ(0);
+    filter: blur(20px) brightness(2);
+    transition:
+      opacity 1.2s ease-in,
+      transform 1.5s cubic-bezier(0.16, 1, 0.3, 1),
+      filter 1.2s ease-out;
+  }
+
+  .app-active #main-app-content {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0px) brightness(1);
+  }
+
+  /* ─── Splash ─── */
+  #splash-container {
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: #000;
+    z-index: 9999;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: opacity 1.5s ease-out, visibility 1.5s;
+  }
+
+  #splash-container.fade-out {
+    opacity: 0;
+    visibility: hidden;
+  }
+
+  #p5-canvas-holder {
+    position: absolute;
+    top: 0; left: 0; width: 100%; height: 100%;
+  }
+
+  #overlay-content {
+    text-align: center;
+    z-index: 10000;
+    position: relative;
+  }
+
+  #splash-title {
+    color: #00ff41;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 15px;
+    margin-bottom: 50px;
+    font-size: 2rem;
+    text-shadow: 0 0 15px #00ff41;
+  }
+
+  #enter-btn {
+    background: transparent;
+    color: #00ff41;
+    border: 1px solid #00ff41;
+    padding: 15px 40px;
+    font-family: 'Courier New', monospace;
+    cursor: pointer;
+    letter-spacing: 5px;
+    transition: all 0.4s;
+  }
+
+  #enter-btn:hover {
+    background: rgba(0, 255, 65, 0.2);
+    box-shadow: 0 0 30px rgba(0, 255, 65, 0.5);
+    transform: scale(1.05);
+  }
+
+  @media (max-width: 400px) {
+    .tabs { gap: 24px; }
+    .controls { gap: 10px; }
+    .btn { padding: 8px 18px; min-width: 90px; font-size: 0.75rem; }
+    .preset-btn { padding: 10px 18px; font-size: 0.85rem; }
+    .custom-input input { width: 52px; font-size: 1.1rem; padding: 8px 4px; }
+    .custom-input .sep { font-size: 1.1rem; }
+    .custom-input .multiplier-sep { font-size: 1.3rem; }
+  }
+
+  /* ─── Hide old tabs ─── */
+  .tabs { display: none; }
+
+  /* ─── VFD Display ─── */
+  .vfd-wrap {
+    position: relative;
+    background: linear-gradient(170deg, #071209 0%, #040c06 100%);
+    border-radius: 8px;
+    border: 1px solid rgba(0,255,65,0.06);
+    border-top-color: rgba(255,255,255,0.18);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.10),
+      inset 0 4px 24px rgba(0,0,0,1),
+      inset 0 0 80px rgba(0,8,2,0.6),
+      0 4px 20px rgba(0,0,0,0.7);
+    padding: 22px 30px;
+    text-align: center;
+    overflow: hidden;
+  }
+
+  .vfd-wrap::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      to bottom,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,.15) 3px
+    );
+    pointer-events: none;
+    z-index: 3;
+    border-radius: inherit;
+  }
+
+  .vfd-ghost {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-segment);
+    letter-spacing: 6px;
+    color: var(--text-dim);
+    pointer-events: none;
+    user-select: none;
+  }
+
+  .vfd-digits {
+    font-family: var(--font-segment);
+    letter-spacing: 6px;
+    color: #00FF9C;
+    text-shadow:
+      0 0 5px #00FF9C,
+      0 0 15px rgba(0,255,156,.5),
+      0 0 30px rgba(0,255,156,.2);
+    position: relative;
+    z-index: 1;
+    user-select: none;
+  }
+
+  .vfd-label {
+    font-family: 'Courier New', monospace;
+    font-size: .52rem;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: rgba(0,255,156,.3);
+    margin-top: 5px;
+    position: relative;
+    z-index: 1;
+    user-select: none;
+  }
+
+  .vfd-top .vfd-ghost,
+  .vfd-top .vfd-digits { font-size: clamp(2.8rem, 10.5vw, 5.2rem); }
+
+  /* BPT active — orange shift */
+  .vfd-top.bpt-running .vfd-digits {
+    color: var(--glow-real);
+    text-shadow:
+      0 0 5px var(--glow-real),
+      0 0 15px rgba(255,159,0,.5),
+      0 0 30px rgba(255,159,0,.2);
+    transition: color .4s, text-shadow .4s;
+  }
+  .vfd-top.bpt-running .vfd-label {
+    color: rgba(255,159,0,.35);
+    transition: color .4s;
+  }
+
+  .vfd-bottom { margin-top: 24px; }
+  .vfd-bottom .vfd-ghost,
+  .vfd-bottom .vfd-digits { font-size: clamp(1.8rem, 7vw, 3.2rem); }
+
+  .vfd-ampm {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 0.28em;
+    vertical-align: super;
+    margin-left: 6px;
+    opacity: 0.9;
+  }
+
+  /* ─── Knob Zone ─── */
+  .knob-zone {
+    position: relative;
+    width: 280px;
+    height: 210px;
+    margin: 20px auto 0;
+  }
+
+  .hw-knob {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 110px;
+    height: 110px;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle at 50% 50%, #090909 0%, #090909 27%, transparent 28%),
+      radial-gradient(ellipse at 50% 28%, rgba(255,255,255,.07) 0%, transparent 56%),
+      repeating-radial-gradient(
+        circle at 50% 50%,
+        #111 0px, #111 1px,
+        #1d1d1d 1px, #1d1d1d 2px
+      );
+    box-shadow:
+      0 8px 28px rgba(0,0,0,1),
+      0 3px 8px rgba(0,0,0,0.8),
+      inset 0 1px 0 rgba(255,255,255,0.08),
+      inset 0 -2px 6px rgba(0,0,0,0.9),
+      0 0 0 1.5px #0a0a0a;
+    cursor: pointer;
+    user-select: none;
+    z-index: 2;
+  }
+
+  .knob-indicator {
+    position: absolute;
+    width: 3px;
+    height: 38px;
+    background: linear-gradient(to bottom, #00FF9C 55%, rgba(0,255,156,.04));
+    border-radius: 2px 2px 0 0;
+    bottom: 50%;
+    left: 50%;
+    transform: translateX(-50%);
+    box-shadow: 0 0 8px #00FF9C, 0 0 4px #00FF9C, 0 0 16px rgba(0,255,156,.4);
+    z-index: 1;
+  }
+
+  .knob-hub {
+    position: absolute;
+    width: 26%;
+    height: 26%;
+    border-radius: 50%;
+    background: radial-gradient(circle at 40% 35%, #1a1a1a, #070707);
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 2px 10px rgba(0,0,0,1), inset 0 1px 0 rgba(255,255,255,0.05), inset 0 -1px 4px rgba(0,0,0,.9);
+    z-index: 3;
+  }
+
+  .kl {
+    position: absolute;
+    font-family: 'Courier New', monospace;
+    font-size: 0.95rem;
+    font-weight: 700;
+    letter-spacing: 0;
+    color: #1e401e;
+    transform: translate(-50%, -50%);
+    transition: color 0.25s, text-shadow 0.25s;
+    user-select: none;
+    pointer-events: none;
+  }
+
+  .kl.lit {
+    color: #00FF9C;
+    text-shadow: 0 0 6px #00FF9C, 0 0 14px rgba(0,255,156,.4);
+  }
+
+  /* ─── Panel Action Buttons ─── */
+  .panel-actions {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 24px;
+    flex-wrap: wrap;
+  }
+
+  .action-btn {
+    background: transparent;
+    border: 1px solid #1a3a1a;
+    color: #2a5a2a;
+    font-family: inherit;
+    font-size: 0.72rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 10px 22px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.25s;
+    min-width: 96px;
+  }
+
+  .action-btn:hover {
+    border-color: var(--glow);
+    color: var(--glow);
+    box-shadow: 0 0 12px var(--glow-dim), inset 0 0 12px var(--glow-dim);
+  }
+
+  .action-btn.active {
+    border-color: var(--glow);
+    color: var(--glow);
+    box-shadow: 0 0 8px var(--glow-dim);
+  }
+
+  /* ─── SET TIME panel ─── */
+  .set-time-panel {
+    background: #0a0a0a;
+    border: 1px solid #1a3a1a;
+    border-radius: 6px;
+    padding: 14px 20px;
+    margin-top: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  /* ─── Timer back button ─── */
+  .timer-back {
+    background: none;
+    border: none;
+    color: #2a5a2a;
+    font-family: inherit;
+    font-size: 0.68rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    cursor: pointer;
+    padding: 0 0 20px;
+    display: block;
+    transition: color 0.3s;
+  }
+
+  .timer-back:hover { color: var(--glow); }
+
+  /* ─── Full-screen layout ─── */
+  #main-app-content { width: 100vw; height: 100vh; }
+
+  #app-layout {
+    display: flex;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* ─── Sidebar: Metal Rocker Switches ─── */
+  .sidebar {
+    width: 72px;
+    flex-shrink: 0;
+    background: linear-gradient(90deg, #0d0d0d 0%, #111 100%);
+    border-right: 1px solid rgba(255,255,255,.04);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    padding: 20px 0;
+    box-shadow: 2px 0 16px rgba(0,0,0,.5);
+    z-index: 10;
+  }
+
+  .rocker-socket {
+    background: #080808;
+    border-radius: 8px;
+    padding: 4px;
+    box-shadow:
+      inset 0 3px 8px rgba(0,0,0,.95),
+      inset 0 -1px 2px rgba(0,0,0,.6),
+      0 1px 0 rgba(255,255,255,.03);
+  }
+
+  .rocker-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 86px;
+    background: linear-gradient(180deg,
+      #2d2d2d 0%, #242424 44%,
+      #1c1c1c 56%, #171717 100%
+    );
+    border: 1px solid rgba(255,255,255,.08);
+    border-top-color: rgba(255,255,255,.16);
+    border-bottom-color: rgba(0,0,0,.6);
+    border-radius: 5px;
+    cursor: pointer;
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    transform: rotate(180deg);
+    font-family: 'Courier New', monospace;
+    font-size: .5rem;
+    letter-spacing: 2.5px;
+    color: rgba(0,255,65,.28);
+    text-transform: uppercase;
+    box-shadow:
+      0 4px 12px rgba(0,0,0,.9),
+      inset 0 1px 0 rgba(255,255,255,.06),
+      inset 0 -1px 4px rgba(0,0,0,.8);
+    transition: color .2s, background .2s, box-shadow .2s;
+  }
+
+  .rocker-btn:hover {
+    background: linear-gradient(180deg,
+      #363636 0%, #2c2c2c 44%,
+      #222 56%, #1c1c1c 100%
+    );
+    color: rgba(0,255,65,.6);
+  }
+
+  .rocker-btn.active {
+    background: linear-gradient(180deg,
+      #17301f 0%, #102418 44%,
+      #1c1c1c 56%, #171717 100%
+    );
+    border-color: rgba(0,255,156,.55);
+    border-top-color: rgba(0,255,156,.85);
+    color: #00FF9C;
+    box-shadow:
+      0 4px 12px rgba(0,0,0,.9),
+      inset 0 0 10px rgba(0,255,156,.2),
+      inset 0 1px 0 rgba(0,255,156,.15),
+      0 0 14px rgba(0,255,156,.08);
+  }
+
+  /* ─── Main Dashboard ─── */
+  .dashboard {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: auto;
+    padding: 24px;
+  }
+
+  .dashboard-inner {
+    position: relative;
+    padding: 18px;
+    border: 1px solid rgba(255,255,255,.03);
+    border-radius: 10px;
+  }
+
+  /* ─── Hex Bolt Corners ─── */
+  .hex-bolt {
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    background: linear-gradient(135deg, #252525, #131313);
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    z-index: 2;
+  }
+  .hex-bolt::after {
+    content: '';
+    position: absolute;
+    inset: 4px;
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    background: #0b0b0b;
+  }
+  .hex-bolt.tl { top: 2px;  left: 2px;  }
+  .hex-bolt.tr { top: 2px;  right: 2px; }
+  .hex-bolt.bl { bottom: 2px; left: 2px;  }
+  .hex-bolt.br { bottom: 2px; right: 2px; }
+
+  /* ── Transport Strip ── */
+  .transport-strip {
+    display: inline-flex;
+    gap: 8px;
+    justify-content: center;
+    margin: 6px 0 8px;
+    padding: 6px 10px;
+    background: #090909;
+    border-radius: 9px;
+    box-shadow:
+      inset 0 2px 7px rgba(0,0,0,.95),
+      inset 0 -1px 2px rgba(0,0,0,.5),
+      0 1px 0 rgba(255,255,255,.03);
+  }
+  .transport-btn {
+    background: linear-gradient(180deg,
+      #2b2b2b 0%, #212121 44%,
+      #191919 56%, #141414 100%
+    );
+    border: 1px solid rgba(255,255,255,.07);
+    border-top-color: rgba(255,255,255,.14);
+    border-bottom-color: rgba(0,0,0,.6);
+    border-radius: 5px;
+    width: 44px;
+    height: 32px;
+    color: rgba(0,255,156,.45);
+    font-size: .85rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow:
+      0 3px 8px rgba(0,0,0,.85),
+      inset 0 1px 0 rgba(255,255,255,.06),
+      inset 0 -1px 3px rgba(0,0,0,.7);
+    transition: color .15s, border-color .15s, box-shadow .15s;
+  }
+  .transport-btn:hover {
+    color: #00FF9C;
+    border-color: rgba(0,255,156,.4);
+    box-shadow:
+      0 3px 8px rgba(0,0,0,.85),
+      inset 0 1px 0 rgba(255,255,255,.06),
+      inset 0 -1px 3px rgba(0,0,0,.7),
+      0 0 10px rgba(0,255,156,.15);
+  }
+  .transport-btn.active {
+    color: #00FF9C;
+    border-color: rgba(0,255,156,.55);
+    border-top-color: rgba(0,255,156,.75);
+    box-shadow:
+      0 3px 8px rgba(0,0,0,.85),
+      inset 0 0 10px rgba(0,255,156,.2),
+      inset 0 1px 0 rgba(0,255,156,.12),
+      0 0 12px rgba(0,255,156,.1);
+  }
+  #modal-hidden-input {
+    position: absolute;
+    opacity: 0;
+    width: 1px;
+    height: 1px;
+    border: none;
+    padding: 0;
+    pointer-events: none;
+  }
+
+  /* ── Temporal Exchange Modal ── */
+  #set-modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.82);
+    z-index: 800;
+    align-items: center;
+    justify-content: center;
+  }
+  #set-modal-overlay.open { display: flex; }
+  #set-modal-box {
+    background: #111;
+    border: 1px solid rgba(0,255,156,.18);
+    border-radius: 14px;
+    padding: 28px 24px 22px;
+    width: 300px;
+    box-shadow: 0 0 40px rgba(0,0,0,.9), 0 0 20px rgba(0,255,156,.06);
+  }
+  #set-modal-box h3 {
+    font-family: 'Courier New', monospace;
+    font-size: .72rem;
+    letter-spacing: 4px;
+    color: rgba(0,255,156,.45);
+    text-align: center;
+    margin-bottom: 18px;
+    text-transform: uppercase;
+  }
+  .modal-field { margin-bottom: 12px; }
+  .modal-field-label {
+    font-family: 'Courier New', monospace;
+    font-size: .6rem;
+    letter-spacing: 3px;
+    color: rgba(0,255,156,.3);
+    text-transform: uppercase;
+    margin-bottom: 5px;
+  }
+  .modal-vfd {
+    background: linear-gradient(160deg, #020806, #0A2A1F);
+    border: 1px solid rgba(255,255,255,.1);
+    border-radius: 8px;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: inset 0 0 16px rgba(0,255,156,.04), inset 0 2px 4px rgba(0,0,0,.8);
+    transition: border-color .2s;
+    position: relative;
+  }
+  .modal-vfd::before {
+    content: '88:88:88';
+    position: absolute;
+    font-family: 'Courier New', monospace;
+    font-size: 1.6rem;
+    letter-spacing: 4px;
+    color: rgba(0,255,156,.05);
+    pointer-events: none;
+  }
+  .modal-vfd.focused { border-color: rgba(0,255,156,.55); }
+  .modal-vfd span {
+    position: relative;
+    font-family: 'Courier New', monospace;
+    font-size: 1.6rem;
+    letter-spacing: 4px;
+    color: #00FF9C;
+    text-shadow: 0 0 6px #00FF9C, 0 0 14px rgba(0,255,156,.5);
+  }
+  #modal-ratio {
+    font-family: 'Courier New', monospace;
+    font-size: .6rem;
+    letter-spacing: 2px;
+    color: #88aa33;
+    text-align: center;
+    min-height: 16px;
+    margin-bottom: 14px;
+  }
+  #modal-keypad {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+  .modal-key {
+    background: #1a1a1a;
+    border: 1px solid rgba(0,255,156,.14);
+    border-radius: 6px;
+    height: 40px;
+    font-family: 'Courier New', monospace;
+    font-size: .75rem;
+    letter-spacing: 1px;
+    color: rgba(0,255,156,.6);
+    cursor: pointer;
+    transition: background .15s, color .15s;
+  }
+  .modal-key:hover { background: #222; color: #00FF9C; }
+  .modal-key.ok-key {
+    color: #00FF9C;
+    border-color: rgba(0,255,156,.4);
+    box-shadow: 0 0 8px rgba(0,255,156,.1);
+  }
+  .modal-close {
+    display: block;
+    margin: 14px auto 0;
+    background: transparent;
+    border: none;
+    font-family: 'Courier New', monospace;
+    font-size: .58rem;
+    letter-spacing: 3px;
+    color: rgba(0,255,156,.25);
+    cursor: pointer;
+    text-transform: uppercase;
+  }
+  .modal-close:hover { color: rgba(0,255,156,.5); }
+
+  /* ─── Horizontal rocker variant (Create Personal Time) ─── */
+  .rocker-btn-h {
+    writing-mode: horizontal-tb;
+    transform: none;
+    height: 54px;
+    width: 56px;
+    font-size: .42rem;
+    letter-spacing: 1.5px;
+    white-space: normal;
+    text-align: center;
+    line-height: 1.7;
+    padding: 6px 2px;
+  }
+
+  /* ─── Module: name input in modal ─── */
+  .nm-field { margin-bottom: 14px; }
+  .nm-field-label {
+    display: block;
+    font-family: 'Courier New', monospace;
+    font-size: .55rem;
+    letter-spacing: 2.5px;
+    color: rgba(0,255,156,.3);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .nm-text-input {
+    width: 100%;
+    background: linear-gradient(160deg, #020806, #0A2A1F);
+    border: 1px solid rgba(0,255,156,.25);
+    border-radius: 6px;
+    color: #00FF9C;
+    font-family: 'Courier New', monospace;
+    font-size: .75rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 10px 12px;
+    outline: none;
+    box-shadow: inset 0 0 10px rgba(0,255,156,.04);
+    box-sizing: border-box;
+  }
+  .nm-text-input::placeholder { color: rgba(0,255,156,.18); }
+  .nm-text-input:focus { border-color: rgba(0,255,156,.5); }
+
+  /* ─── Mini knob inside module ─── */
+  .mini-knob-zone {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin: 8px 0 4px;
+    gap: 5px;
+  }
+  .mod-name-label {
+    font-family: 'Courier New', monospace;
+    font-size: .6rem;
+    letter-spacing: 2px;
+    color: rgba(0,255,156,.45);
+    text-transform: uppercase;
+    text-align: center;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    user-select: none;
+  }
+  .mini-knob-wrap {
+    position: relative;
+    width: 58px;
+    height: 58px;
+    border-radius: 50%;
+    cursor: grab;
+    background:
+      radial-gradient(circle at 50% 50%, #090909 0%, #090909 27%, transparent 28%),
+      radial-gradient(ellipse at 50% 28%, rgba(255,255,255,.07) 0%, transparent 56%),
+      repeating-radial-gradient(circle at 50% 50%, #111 0px, #111 1px, #1d1d1d 1px, #1d1d1d 2px);
+    box-shadow:
+      0 4px 12px rgba(0,0,0,.9),
+      inset 0 1px 0 rgba(255,255,255,.06),
+      inset 0 -1px 4px rgba(0,0,0,.8),
+      0 0 0 1px #0a0a0a;
+    user-select: none;
+  }
+  .mini-knob-indicator {
+    position: absolute;
+    width: 2px;
+    height: 19px;
+    background: linear-gradient(to bottom, #00FF9C 55%, rgba(0,255,156,.04));
+    border-radius: 2px 2px 0 0;
+    bottom: 50%;
+    left: 50%;
+    transform: translateX(-50%);
+    box-shadow: 0 0 6px #00FF9C, 0 0 3px #00FF9C;
+    z-index: 1;
+  }
+  .mini-knob-hub {
+    position: absolute;
+    width: 26%;
+    height: 26%;
+    border-radius: 50%;
+    background: radial-gradient(circle at 40% 35%, #1a1a1a, #070707);
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 2px 6px rgba(0,0,0,1), inset 0 1px 0 rgba(255,255,255,.05);
+    z-index: 2;
+  }
+  .mod-ratio-label {
+    font-family: 'Courier New', monospace;
+    font-size: .48rem;
+    letter-spacing: 1.5px;
+    color: rgba(0,255,156,.38);
+    text-transform: uppercase;
+    user-select: none;
+    text-align: center;
+    line-height: 1.6;
+    max-width: 170px;
+  }
+
+  /* ─── Module kill button ─── */
+  .mod-kill {
+    background: transparent;
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 3px;
+    color: rgba(255,255,255,.2);
+    font-size: .65rem;
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+    transition: color .2s, border-color .2s;
+    flex-shrink: 0;
+  }
+  .mod-kill:hover { color: #ff4444; border-color: rgba(255,68,68,.4); }
+
+  /* ─── Dashboard scroll ─── */
+  .dashboard {
+    flex-direction: column;
+    align-items: center;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  /* ─── Module Rack ─── */
+  #module-rack {
+    width: 100%;
+    max-width: 420px;
+    padding-bottom: 40px;
+  }
+
+  .module-separator {
+    width: 100%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.07) 30%, rgba(255,255,255,.07) 70%, transparent);
+    margin: 28px 0 20px;
+  }
+
+  .rack-module {
+    padding: 14px 18px 10px;
+    border-radius: 8px;
+    background: rgba(255,255,255,.008);
+    border: 1px solid rgba(255,255,255,.03);
+    position: relative;
+  }
+
+  .module-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+
+  .module-label {
+    font-family: 'Courier New', monospace;
+    font-size: .46rem;
+    letter-spacing: 3.5px;
+    color: rgba(255,255,255,.16);
+    text-transform: uppercase;
+    user-select: none;
+  }
+
+  .module-ratio-badge {
+    font-family: 'Courier New', monospace;
+    font-size: .46rem;
+    letter-spacing: 2px;
+    color: rgba(0,255,156,.2);
+    text-transform: uppercase;
+    user-select: none;
+  }
+
+  .vfd-module .vfd-ghost,
+  .vfd-module .vfd-digits { font-size: clamp(1.5rem, 5.5vw, 2.6rem); }
+
+  .rack-module .transport-strip { margin-top: 8px; }
+
+  /* Module running → orange */
+  .rack-module.mod-active .vfd-digits {
+    color: var(--glow-real);
+    text-shadow:
+      0 0 5px var(--glow-real),
+      0 0 15px rgba(255,159,0,.5),
+      0 0 30px rgba(255,159,0,.2);
+    transition: color .4s, text-shadow .4s;
+    animation: mod-breathe 4s ease-in-out infinite;
+  }
+  .rack-module.mod-active .vfd-label { color: rgba(255,159,0,.3); transition: color .4s; }
+
+  /* Temporal lag progress bar */
+  .mod-progress-bar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: rgba(0,255,156,.04);
+    z-index: 4;
+  }
+  .mod-progress-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, rgba(0,255,156,.2), rgba(0,255,156,.65));
+    box-shadow: 0 0 5px rgba(0,255,156,.35);
+    transition: width .6s linear;
+  }
+  @keyframes mod-breathe {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.5; }
+  }
+
+  /* ─── New Module Modal ─── */
+  #new-module-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.82);
+    z-index: 800;
+    align-items: center;
+    justify-content: center;
+  }
+  #new-module-modal.open { display: flex; }
+  .nm-box {
+    background: #111;
+    border: 1px solid rgba(0,255,156,.18);
+    border-radius: 14px;
+    padding: 28px 28px 24px;
+    width: 320px;
+    box-shadow: 0 0 40px rgba(0,0,0,.9), 0 0 20px rgba(0,255,156,.06);
+  }
+  .nm-box h3 {
+    font-family: 'Courier New', monospace;
+    font-size: .72rem;
+    letter-spacing: 4px;
+    color: rgba(0,255,156,.45);
+    text-align: center;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+  }
+  .nm-question {
+    font-family: 'Courier New', monospace;
+    font-size: .6rem;
+    letter-spacing: 2px;
+    color: rgba(0,255,156,.35);
+    text-align: center;
+    margin-bottom: 16px;
+    text-transform: uppercase;
+    line-height: 1.7;
+  }
+  .nm-input-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .nm-input-row input {
+    background: linear-gradient(160deg, #020806, #0A2A1F);
+    border: 1px solid rgba(0,255,156,.35);
+    border-radius: 6px;
+    color: #00FF9C;
+    font-family: 'Courier New', monospace;
+    font-size: 1.6rem;
+    text-align: center;
+    width: 88px;
+    padding: 8px 6px;
+    outline: none;
+    text-shadow: 0 0 6px #00FF9C;
+    box-shadow: inset 0 0 12px rgba(0,255,156,.05);
+    -moz-appearance: textfield;
+  }
+  .nm-input-row input::-webkit-inner-spin-button,
+  .nm-input-row input::-webkit-outer-spin-button { -webkit-appearance: none; }
+  .nm-unit {
+    font-family: 'Courier New', monospace;
+    font-size: .55rem;
+    letter-spacing: 2px;
+    color: rgba(0,255,156,.3);
+    text-transform: uppercase;
+    max-width: 110px;
+    line-height: 1.6;
+  }
+  .nm-actions { display: flex; gap: 10px; }
+  .nm-btn {
+    flex: 1;
+    height: 40px;
+    background: transparent;
+    border: 1px solid rgba(0,255,156,.2);
+    border-radius: 6px;
+    font-family: 'Courier New', monospace;
+    font-size: .58rem;
+    letter-spacing: 3px;
+    color: rgba(0,255,156,.5);
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: all .2s;
+  }
+  .nm-btn:hover { border-color: rgba(0,255,156,.5); color: #00FF9C; }
+  .nm-btn.nm-confirm {
+    border-color: rgba(0,255,156,.45);
+    color: #00FF9C;
+    box-shadow: 0 0 10px rgba(0,255,156,.08);
+  }
+</style>
+</head>
+<body>
+
+<div id="splash-container">
+  <div id="p5-canvas-holder"></div>
+  <div id="overlay-content">
+    <h1 id="splash-title">BPT</h1>
+    <button id="enter-btn" onclick="startTransition()">ENTER FLOW</button>
+  </div>
+</div>
+
+<div id="main-app-content">
+<div id="app-layout">
+
+  <!-- Left Sidebar: Metal Rocker Switches -->
+  <aside class="sidebar">
+    <div class="rocker-socket">
+      <button class="rocker-btn active" id="btn-clock-mode">CLOCK</button>
+    </div>
+    <div class="rocker-socket">
+      <button class="rocker-btn" id="btn-set-time-bpt">SET TIME</button>
+    </div>
+    <div class="rocker-socket">
+      <button class="rocker-btn rocker-btn-h" id="btn-new-module">CREATE PERSONAL TIME</button>
+    </div>
+  </aside>
+
+  <!-- Main Dashboard -->
+  <main class="dashboard">
+  <div class="dashboard-inner">
+    <div class="hex-bolt tl"></div>
+    <div class="hex-bolt tr"></div>
+    <div class="hex-bolt bl"></div>
+    <div class="hex-bolt br"></div>
+
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="clock">Clock</button>
+      <button class="tab-btn" data-tab="timer">Timer</button>
+    </div>
+
+    <!-- Clock Panel -->
+    <div id="clock-panel" class="panel active">
+
+    <!-- BPT Countdown (top, large) -->
+    <div class="vfd-wrap vfd-top">
+      <div class="vfd-ghost">88:88:88</div>
+      <div class="vfd-digits" id="bpt-display">00:00:00</div>
+      <div class="vfd-label">BPT</div>
+    </div>
+
+    <!-- Knob zone -->
+    <!-- Labels at radius ~95px from knob center (280×210 zone, center=140,105) -->
+    <div class="knob-zone">
+      <span class="kl" style="left:50%;top:4%">BPT</span>
+      <span class="kl" data-mode="1" style="left:23%;top:17%">5</span>
+      <span class="kl" data-mode="2" style="left:77%;top:17%">30</span>
+      <span class="kl" data-mode="0" style="left:15%;top:83%">0</span>
+      <span class="kl" data-mode="3" style="left:85%;top:83%">60</span>
+      <div class="hw-knob" id="hw-knob">
+        <div class="knob-indicator"></div>
+        <div class="knob-hub"></div>
+      </div>
+    </div>
+
+    <!-- Transport Controls -->
+    <div class="transport-strip">
+      <button class="transport-btn" id="btn-play" title="Play">&#9654;</button>
+      <button class="transport-btn" id="btn-pause-bpt" title="Pause">&#9646;&#9646;</button>
+      <button class="transport-btn" id="btn-reset-bpt" title="Reset">&#10227;</button>
+    </div>
+
+    <!-- Real Clock (bottom, smaller) -->
+    <div class="vfd-wrap vfd-bottom">
+      <div class="vfd-ghost">88:88:88</div>
+      <div class="vfd-digits" id="clock-time">00:00:00</div>
+      <div class="vfd-label">REAL TIME</div>
+    </div>
+
+    <!-- Hidden compat elements -->
+    <div id="clock-date" style="display:none;"></div>
+    <button id="fmt-12" style="display:none;"></button>
+    <button id="fmt-24" style="display:none;"></button>
+
+    <!-- SET TIME dropdown -->
+    <div class="set-time-panel" id="set-time-panel" style="display:none;">
+      <div class="input-group">
+        <input type="number" id="bpt-hours" min="0" max="99" value="0">
+        <span class="input-label">hrs</span>
+      </div>
+      <span class="sep">:</span>
+      <div class="input-group">
+        <input type="number" id="bpt-minutes" min="0" max="59" value="30">
+        <span class="input-label">min</span>
+      </div>
+      <button class="btn primary" id="btn-apply-time">Set</button>
+    </div>
+
+    <button id="btn-bpt-toggle" style="display:none;"></button>
+
+    </div>
+
+  <!-- Timer Panel -->
+  <div id="timer-panel" class="panel">
+    <button class="timer-back" id="btn-timer-back">&#8592; CLOCK</button>
+    <div id="timer-setup">
+      <div class="presets">
+        <button class="preset-btn" data-display="300" data-actual="1800">5 min</button>
+        <button class="preset-btn" data-display="900" data-actual="2700">15 min</button>
+        <button class="preset-btn" data-display="1800" data-actual="3600">30 min</button>
+        <button class="preset-btn" data-display="3600" data-actual="7200">1 hour</button>
+      </div>
+      <div class="custom-divider">or set your own</div>
+      <div class="custom-input">
+        <div class="input-group">
+          <input type="number" id="custom-hours" min="0" max="99" value="0" placeholder="0">
+          <span class="input-label">hrs</span>
+        </div>
+        <span class="sep">:</span>
+        <div class="input-group">
+          <input type="number" id="custom-minutes" min="0" max="59" value="10" placeholder="0">
+          <span class="input-label">min</span>
+        </div>
+        <span class="multiplier-sep">&times;</span>
+        <div class="input-group">
+          <input type="number" id="custom-multiplier" min="1" max="99" step="0.5" value="2">
+          <span class="input-label">mult</span>
+        </div>
+        <button class="btn primary" id="btn-custom-go">Go</button>
+      </div>
+    </div>
+    <div class="timer-display" style="display:none;">
+      <div class="time-bg">88:88:88</div>
+      <div class="time-fg" id="timer-time">00:05:00</div>
+    </div>
+    <div class="mode-label" id="mode-label" style="display:none;">color time</div>
+    <div class="controls" id="timer-controls" style="display:none;">
+      <button class="btn" id="btn-pause">Pause</button>
+      <button class="btn" id="btn-reset">Reset</button>
+    </div>
+    </div><!-- /dashboard-inner -->
+
+    <div id="module-rack"></div>
+
+  </main><!-- /dashboard -->
+
+</div><!-- /app-layout -->
+</div><!-- /main-app-content -->
+
+<!-- New Module Modal -->
+<div id="new-module-modal">
+  <div class="nm-box">
+    <h3>Personal Time</h3>
+    <div class="nm-field">
+      <label class="nm-field-label" for="nm-name-input">Name Your Time</label>
+      <input class="nm-text-input" type="text" id="nm-name-input" placeholder="DEEP WORK" maxlength="20" autocomplete="off">
+    </div>
+    <p class="nm-question">1 minute of mine equals</p>
+    <div class="nm-input-row">
+      <input type="number" id="nm-ratio-input" min="1" max="60" step="1" value="7">
+      <span class="nm-unit">real<br>minutes</span>
+    </div>
+    <div class="nm-actions">
+      <button class="nm-btn nm-confirm" id="nm-confirm">CREATE</button>
+      <button class="nm-btn" id="nm-cancel">CANCEL</button>
+    </div>
+  </div>
+</div>
+
+<!-- Temporal Exchange Modal -->
+<div id="set-modal-overlay">
+  <div id="set-modal-box">
+    <h3>Temporal Exchange</h3>
+    <div class="modal-field">
+      <div class="modal-field-label">BPT &mdash; User View</div>
+      <div class="modal-vfd focused" id="modal-bpt-vfd">
+        <span id="modal-bpt-val">00:00:00</span>
+      </div>
+    </div>
+    <div class="modal-field">
+      <div class="modal-field-label">Actual &mdash; System Reality</div>
+      <div class="modal-vfd" id="modal-act-vfd">
+        <span id="modal-act-val">00:00:00</span>
+      </div>
+    </div>
+    <div id="modal-ratio"></div>
+    <div id="modal-keypad">
+      <button class="modal-key" data-k="7">7</button>
+      <button class="modal-key" data-k="8">8</button>
+      <button class="modal-key" data-k="9">9</button>
+      <button class="modal-key" data-k="4">4</button>
+      <button class="modal-key" data-k="5">5</button>
+      <button class="modal-key" data-k="6">6</button>
+      <button class="modal-key" data-k="1">1</button>
+      <button class="modal-key" data-k="2">2</button>
+      <button class="modal-key" data-k="3">3</button>
+      <button class="modal-key" data-k="clr">CLR</button>
+      <button class="modal-key" data-k="0">0</button>
+      <button class="modal-key ok-key" data-k="ok">OK</button>
+    </div>
+    <button class="modal-close" id="modal-close-btn">cancel</button>
+    <input id="modal-hidden-input" type="tel" inputmode="numeric" autocomplete="off">
+  </div>
+</div>
+
+<script>
+(function() {
+  // ─── Tabs ───
+  const tabBtns = document.querySelectorAll('.tab-btn');
+  const panels = document.querySelectorAll('.panel');
+
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      tabBtns.forEach(b => b.classList.remove('active'));
+      panels.forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(btn.dataset.tab + '-panel').classList.add('active');
+    });
+  });
+
+  // ─── Clock (real time, bottom VFD) ───
+  let use24 = false;
+  const clockTimeEl = document.getElementById('clock-time');
+  const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  function pad(n) { return String(n).padStart(2, '0'); }
+
+  function updateClock() {
+    if (appMode !== 'clock') return; // timer mode: displays managed by knob/tick
+    const now = new Date();
+    let h = now.getHours(), m = now.getMinutes(), s = now.getSeconds();
+    let ampm = '';
+    if (!use24) {
+      ampm = h >= 12 ? 'PM' : 'AM';
+      h = h % 12 || 12;
+    }
+    const timeStr = pad(h) + ':' + pad(m) + ':' + pad(s) +
+      (use24 ? '' : '<span class="vfd-ampm">' + ampm + '</span>');
+    // Bottom: true current time
+    clockTimeEl.innerHTML = timeStr;
+    // Top: current time + BPT offset from knob position
+    var offsetSec = dilationModes[modeIdx].bptPreset || 0;
+    var offDate = new Date(now.getTime() + offsetSec * 1000);
+    var oh = offDate.getHours(), om = offDate.getMinutes(), os = offDate.getSeconds();
+    var oampm = '';
+    if (!use24) {
+      oampm = oh >= 12 ? 'PM' : 'AM';
+      oh = oh % 12 || 12;
+    }
+    bptDisplay.innerHTML = pad(oh) + ':' + pad(om) + ':' + pad(os) +
+      (use24 ? '' : '<span class="vfd-ampm">' + oampm + '</span>');
+  }
+
+  // ─── Knob ───
+  // factor = bptDisplaySec / actualSec  (smaller factor = more dilation)
+  // "5"  → BPT 5 min  (300s)  = Actual 30 min  (1800s) → factor 300/1800 = 1/6
+  // "30" → BPT 30 min (1800s) = Actual 60 min  (3600s) → factor 1/2
+  // "60" → BPT 60 min (3600s) = Actual 120 min (7200s) → factor 1/2
+  const dilationModes = [
+    { factor: 1,      rotation: -135, bptPreset: 0    },
+    { factor: 1/6,    rotation: -45,  bptPreset: 300  },
+    { factor: 1/2,    rotation: 45,   bptPreset: 1800 },
+    { factor: 1/2,    rotation: 135,  bptPreset: 3600 }
+  ];
+  let modeIdx = 0;
+  let appMode = 'timer'; // 'timer' | 'clock'
+  const hwKnob = document.getElementById('hw-knob');
+  const knobLabels = document.querySelectorAll('.kl[data-mode]');
+
+  function setKnobMode(idx, animate) {
+    modeIdx = idx;
+    const angle = dilationModes[idx].rotation;
+    if (!animate) {
+      const prev = hwKnob.style.transition;
+      hwKnob.style.transition = 'none';
+      hwKnob.style.transform = 'translate(-50%, -50%) rotate(' + angle + 'deg)';
+      hwKnob.offsetWidth;
+      hwKnob.style.transition = prev;
+    } else {
+      hwKnob.style.transition = 'none';
+      hwKnob.style.transform = 'translate(-50%, -50%) rotate(' + angle + 'deg)';
+    }
+    knobLabels.forEach(function(el) {
+      el.classList.toggle('lit', parseInt(el.dataset.mode) === idx);
+    });
+    // Load preset into displays (guard: bptDisplay not ready on first init call)
+    if (typeof bptDisplay === 'object' && bptDisplay && !bptActive && appMode === 'timer') {
+      var d = dilationModes[idx];
+      bptDisplayTotal = d.bptPreset;
+      var actualSec = d.bptPreset > 0 ? (d.bptPreset / d.factor) : 0;
+      bptLastDisplaySec = d.bptPreset;
+      bptLastActualSec  = actualSec;
+      if (d.bptPreset > 0) {
+        bptDisplay.textContent = formatBpt(d.bptPreset * 1000);
+        clockTimeEl.textContent = formatBpt(actualSec * 1000);
+      } else {
+        bptDisplay.textContent = '00:00:00';
+        clockTimeEl.textContent = '00:00:00';
+      }
+    }
+  }
+
+  setKnobMode(0, false);
+
+  hwKnob.addEventListener('click', function() {
+    var next = (modeIdx + 1) % dilationModes.length;
+    setKnobMode(next, true);
+    if (bptActive && bptDisplayTotal > 0) {
+      var ratio = bptActualRemaining / (bptActualTotal * 1000);
+      bptActualTotal = bptDisplayTotal / dilationModes[modeIdx].factor;
+      bptActualRemaining = bptActualTotal * 1000 * ratio;
+      bptEnd = Date.now() + bptActualRemaining;
+    }
+  });
+
+  // ─── BPT Timer (top VFD) ───
+  var bptActive = false;
+  var bptDisplayTotal = 0;
+  var bptActualTotal = 0;
+  var bptActualRemaining = 0;
+  var bptEnd = 0;
+  var bptInterval = null;
+  var bptPaused = false;
+  var bptLastDisplaySec = 0;
+  var bptLastActualSec  = 0;
+
+  var bptDisplay = document.getElementById('bpt-display');
+  var btnBptToggle = document.getElementById('btn-bpt-toggle');
+  var btnSetTimeBpt = document.getElementById('btn-set-time-bpt');
+  var setTimePanel = document.getElementById('set-time-panel');
+
+  function formatBpt(ms) {
+    var totalSec = Math.max(0, Math.ceil(ms / 1000));
+    var h = Math.floor(totalSec / 3600);
+    var mn = Math.floor((totalSec % 3600) / 60);
+    var s = totalSec % 60;
+    return pad(h) + ':' + pad(mn) + ':' + pad(s);
+  }
+
+  function getBptDisplayMs() {
+    if (bptActualTotal <= 0) return 0;
+    return bptDisplayTotal * 1000 * (bptActualRemaining / (bptActualTotal * 1000));
+  }
+
+  function bptTick() {
+    bptActualRemaining = bptEnd - Date.now();
+    if (bptActualRemaining <= 0) {
+      bptActualRemaining = 0;
+      clearInterval(bptInterval);
+      bptInterval = null;
+      bptActive = false;
+      bptPaused = false;
+      btnBptToggle.textContent = 'BPT';
+      btnBptToggle.classList.remove('active');
+      if (appMode === 'timer') {
+        bptDisplay.textContent = '00:00:00';
+        clockTimeEl.textContent = '00:00:00';
+      }
+      updateTransport();
+      return;
+    }
+    // Only update displays when in timer mode (clock mode keeps showing real time)
+    if (appMode === 'timer') {
+      bptDisplay.textContent = formatBpt(getBptDisplayMs());       // Top: BPT display time
+      clockTimeEl.textContent = formatBpt(bptActualRemaining);     // Bottom: actual remaining
+    }
+  }
+
+  btnBptToggle.addEventListener('click', function() {
+    if (bptActive) {
+      clearInterval(bptInterval);
+      bptInterval = null;
+      bptActive = false;
+      bptDisplay.textContent = '00:00:00';
+      btnBptToggle.textContent = 'BPT';
+      btnBptToggle.classList.remove('active');
+    } else {
+      if (bptDisplayTotal <= 0) {
+        setTimePanel.style.display = setTimePanel.style.display === 'none' ? '' : 'none';
+        return;
+      }
+      var factor = dilationModes[modeIdx].factor;
+      bptActualTotal = bptDisplayTotal / factor;
+      bptActualRemaining = bptActualTotal * 1000;
+      bptEnd = Date.now() + bptActualRemaining;
+      bptActive = true;
+      bptInterval = setInterval(bptTick, 100);
+      btnBptToggle.textContent = 'BPT ON';
+      btnBptToggle.classList.add('active');
+      setTimePanel.style.display = 'none';
+    }
+  });
+
+  btnSetTimeBpt.addEventListener('click', openModal);
+
+  document.getElementById('btn-apply-time').addEventListener('click', function() {
+    var h = parseInt(document.getElementById('bpt-hours').value, 10) || 0;
+    var mn = parseInt(document.getElementById('bpt-minutes').value, 10) || 0;
+    bptDisplayTotal = h * 3600 + mn * 60;
+    if (bptDisplayTotal > 0) {
+      bptDisplay.textContent = formatBpt(bptDisplayTotal * 1000);
+      setTimePanel.style.display = 'none';
+    }
+  });
+
+  // ─── Navigation ───
+  document.getElementById('btn-clock-mode').addEventListener('click', function() {
+    appMode = appMode === 'timer' ? 'clock' : 'timer';
+    this.textContent = appMode === 'clock' ? 'TIMER' : 'CLOCK';
+    this.classList.toggle('active', appMode === 'clock');
+    if (appMode === 'clock') {
+      updateClock(); // immediately show real time in both displays
+    } else {
+      // Restore timer displays
+      if (!bptActive) {
+        var d = dilationModes[modeIdx];
+        bptDisplayTotal = d.bptPreset;
+        bptDisplay.textContent = d.bptPreset > 0 ? formatBpt(d.bptPreset * 1000) : '00:00:00';
+        clockTimeEl.textContent = d.bptPreset > 0 ? formatBpt((d.bptPreset / d.factor) * 1000) : '00:00:00';
+      }
+      // if bptActive, the tick will resume updating displays within 100ms
+    }
+  });
+
+  document.getElementById('btn-timer-back').addEventListener('click', function() {
+    document.getElementById('timer-panel').classList.remove('active');
+    document.getElementById('clock-panel').classList.add('active');
+  });
+
+  updateClock();
+  setInterval(updateClock, 1000);
+
+  // ─── Timer (Color People Time) ───
+  const timerSetup = document.getElementById('timer-setup');
+  const timerDisplayEl = document.querySelector('.timer-display');
+  const timerTime = document.getElementById('timer-time');
+  const timerPanel = document.getElementById('timer-panel');
+  const timerControls = document.getElementById('timer-controls');
+  const btnPause = document.getElementById('btn-pause');
+  const btnReset = document.getElementById('btn-reset');
+  const modeLabel = document.getElementById('mode-label');
+
+  let displayTotal = 0;   // display seconds (the "fake" total)
+  let actualTotal = 0;    // actual seconds (real total)
+  let actualRemaining = 0; // real ms remaining
+  let timerEnd = 0;        // target Date.now()
+  let timerInterval = null;
+  let timerRunning = false;
+  let timerDone = false;
+  let showingReal = false;
+  let audioCtx = null;
+
+  function formatMs(ms) {
+    const totalSec = Math.ceil(ms / 1000);
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    return pad(h) + ':' + pad(m) + ':' + pad(s);
+  }
+
+  function getDilatedMs() {
+    // dilated display = displayTotal * (actualRemaining / actualTotal)
+    if (actualTotal <= 0) return 0;
+    const ratio = actualRemaining / (actualTotal * 1000);
+    return displayTotal * 1000 * ratio;
+  }
+
+  function updateTimerDisplay() {
+    if (showingReal) {
+      timerTime.textContent = formatMs(actualRemaining);
+    } else {
+      timerTime.textContent = formatMs(getDilatedMs());
+    }
+  }
+
+  function setRealMode(real) {
+    showingReal = real;
+    if (real) {
+      timerDisplayEl.classList.add('show-real');
+      modeLabel.textContent = 'real time';
+      modeLabel.classList.add('real');
+    } else {
+      timerDisplayEl.classList.remove('show-real');
+      modeLabel.textContent = 'color time';
+      modeLabel.classList.remove('real');
+    }
+    updateTimerDisplay();
+  }
+
+  // Click-to-toggle on timer display
+  timerDisplayEl.addEventListener('click', () => {
+    if (timerDone) return;
+    setRealMode(!showingReal);
+  });
+
+  function showRunning() {
+    timerSetup.style.display = 'none';
+    timerDisplayEl.style.display = '';
+    modeLabel.style.display = '';
+    timerControls.style.display = '';
+    btnPause.textContent = 'Pause';
+  }
+
+  function showSetup() {
+    timerSetup.style.display = '';
+    timerDisplayEl.style.display = 'none';
+    modeLabel.style.display = 'none';
+    timerControls.style.display = 'none';
+    timerPanel.classList.remove('timer-done');
+    timerDisplayEl.classList.remove('show-real');
+    modeLabel.classList.remove('real');
+  }
+
+  function tick() {
+    actualRemaining = timerEnd - Date.now();
+    if (actualRemaining <= 0) {
+      actualRemaining = 0;
+      timerTime.textContent = '00:00:00';
+      clearInterval(timerInterval);
+      timerInterval = null;
+      timerRunning = false;
+      timerDone = true;
+      timerPanel.classList.add('timer-done');
+      btnPause.style.display = 'none';
+      playAlarm();
+      return;
+    }
+    updateTimerDisplay();
+  }
+
+  function playAlarm() {
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      const beep = (freq, start, dur) => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'square';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.15, audioCtx.currentTime + start);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + start + dur);
+        osc.connect(gain).connect(audioCtx.destination);
+        osc.start(audioCtx.currentTime + start);
+        osc.stop(audioCtx.currentTime + start + dur);
+      };
+      for (let i = 0; i < 3; i++) {
+        beep(880, i * 0.4, 0.15);
+        beep(660, i * 0.4 + 0.15, 0.15);
+      }
+    } catch(e) { /* audio not available */ }
+  }
+
+  // Preset buttons — auto-start on click
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      displayTotal = parseInt(btn.dataset.display, 10);
+      actualTotal = parseInt(btn.dataset.actual, 10);
+      actualRemaining = actualTotal * 1000;
+      timerEnd = Date.now() + actualRemaining;
+      showingReal = false;
+      timerRunning = true;
+      timerDone = false;
+      setRealMode(false);
+      updateTimerDisplay();
+      showRunning();
+      timerInterval = setInterval(tick, 100);
+    });
+  });
+
+  // Custom Go button
+  document.getElementById('btn-custom-go').addEventListener('click', () => {
+    const h = parseInt(document.getElementById('custom-hours').value, 10) || 0;
+    const m = parseInt(document.getElementById('custom-minutes').value, 10) || 0;
+    const mult = parseFloat(document.getElementById('custom-multiplier').value) || 0;
+    const dispSec = h * 3600 + m * 60;
+    if (dispSec <= 0 || mult < 1) return;
+    displayTotal = dispSec;
+    actualTotal = dispSec * mult;
+    actualRemaining = actualTotal * 1000;
+    timerEnd = Date.now() + actualRemaining;
+    showingReal = false;
+    timerRunning = true;
+    timerDone = false;
+    setRealMode(false);
+    updateTimerDisplay();
+    showRunning();
+    timerInterval = setInterval(tick, 100);
+  });
+
+  btnPause.addEventListener('click', () => {
+    if (timerRunning) {
+      // Pause
+      clearInterval(timerInterval);
+      timerInterval = null;
+      timerRunning = false;
+      actualRemaining = timerEnd - Date.now();
+      btnPause.textContent = 'Resume';
+    } else {
+      // Resume
+      timerEnd = Date.now() + actualRemaining;
+      timerRunning = true;
+      timerInterval = setInterval(tick, 100);
+      btnPause.textContent = 'Pause';
+    }
+  });
+
+  btnReset.addEventListener('click', () => {
+    clearInterval(timerInterval);
+    timerInterval = null;
+    timerRunning = false;
+    timerDone = false;
+    actualRemaining = 0;
+    showingReal = false;
+    showSetup();
+  });
+
+  // ─── Temporal Exchange Modal ───
+  var modalOverlay  = document.getElementById('set-modal-overlay');
+  var modalBptVfd   = document.getElementById('modal-bpt-vfd');
+  var modalActVfd   = document.getElementById('modal-act-vfd');
+  var modalBptVal   = document.getElementById('modal-bpt-val');
+  var modalActVal   = document.getElementById('modal-act-val');
+  var modalRatioEl  = document.getElementById('modal-ratio');
+
+  var modalBptDigits = [0,0,0,0,0,0];
+  var modalActDigits = [0,0,0,0,0,0];
+  var modalFocus = 'bpt';
+
+  function modalDigitsToSec(d) {
+    return (d[0]*10+d[1])*3600 + (d[2]*10+d[3])*60 + (d[4]*10+d[5]);
+  }
+  function modalDigitsToStr(d) {
+    return d[0]+''+d[1]+':'+d[2]+''+d[3]+':'+d[4]+''+d[5];
+  }
+  function modalSetFocus(f) {
+    modalFocus = f;
+    modalBptVfd.classList.toggle('focused', f === 'bpt');
+    modalActVfd.classList.toggle('focused', f === 'act');
+  }
+  function modalUpdateRatio() {
+    var bSec = modalDigitsToSec(modalBptDigits);
+    var aSec = modalDigitsToSec(modalActDigits);
+    if (bSec > 0 && aSec > 0) {
+      var r = aSec / bSec;
+      modalRatioEl.textContent = '1 bpt min = ' + r.toFixed(2) + ' actual min';
+    } else {
+      modalRatioEl.textContent = '';
+    }
+  }
+  function modalPressKey(k) {
+    var digits  = modalFocus === 'bpt' ? modalBptDigits : modalActDigits;
+    var display = modalFocus === 'bpt' ? modalBptVal    : modalActVal;
+    if (k === 'clr') {
+      digits.splice(0, 6, 0,0,0,0,0,0);
+    } else if (k === 'ok') {
+      modalOK(); return;
+    } else {
+      digits.shift();
+      digits.push(parseInt(k, 10));
+    }
+    display.textContent = modalDigitsToStr(digits);
+    modalUpdateRatio();
+  }
+  function modalOK() {
+    var bSec = modalDigitsToSec(modalBptDigits);
+    var aSec = modalDigitsToSec(modalActDigits);
+    if (bSec <= 0 || aSec <= 0) { closeModal(); return; }
+    if (bptActive) {
+      clearInterval(bptInterval);
+      bptInterval = null;
+      bptActive = false;
+    }
+    bptPaused          = false;
+    bptLastDisplaySec  = bSec;
+    bptLastActualSec   = aSec;
+    bptDisplayTotal    = bSec;
+    bptActualTotal     = aSec;
+    bptActualRemaining = aSec * 1000;
+    bptEnd             = Date.now() + bptActualRemaining;
+    bptActive          = true;
+    bptInterval        = setInterval(bptTick, 100);
+    btnBptToggle.textContent = 'BPT ON';
+    btnBptToggle.classList.add('active');
+    if (appMode === 'timer') {
+      bptDisplay.textContent  = formatBpt(bSec * 1000);
+      clockTimeEl.textContent = formatBpt(aSec * 1000);
+    }
+    updateTransport();
+    closeModal();
+  }
+  function openModal() {
+    if (setTimePanel.style.display !== 'none') setTimePanel.style.display = 'none';
+    modalBptDigits.splice(0, 6, 0,0,0,0,0,0);
+    modalActDigits.splice(0, 6, 0,0,0,0,0,0);
+    modalBptVal.textContent = '00:00:00';
+    modalActVal.textContent = '00:00:00';
+    modalRatioEl.textContent = '';
+    modalSetFocus('bpt');
+    modalOverlay.classList.add('open');
+    setTimeout(function() { document.getElementById('modal-hidden-input').focus(); }, 50);
+  }
+  function closeModal() {
+    modalOverlay.classList.remove('open');
+    document.getElementById('modal-hidden-input').blur();
+  }
+
+  modalBptVfd.addEventListener('click', function() { modalSetFocus('bpt'); document.getElementById('modal-hidden-input').focus(); });
+  modalActVfd.addEventListener('click', function() { modalSetFocus('act'); document.getElementById('modal-hidden-input').focus(); });
+  document.getElementById('modal-keypad').addEventListener('click', function(e) {
+    var key = e.target.closest('[data-k]');
+    if (key) modalPressKey(key.dataset.k);
+  });
+  document.getElementById('modal-close-btn').addEventListener('click', closeModal);
+  modalOverlay.addEventListener('click', function(e) {
+    if (e.target === modalOverlay) closeModal();
+  });
+
+  // Physical keyboard when modal is open
+  document.getElementById('modal-hidden-input').addEventListener('keydown', function(e) {
+    if (!modalOverlay.classList.contains('open')) return;
+    if (e.key >= '0' && e.key <= '9') { e.preventDefault(); modalPressKey(e.key); }
+    else if (e.key === 'Backspace')    { e.preventDefault(); modalPressKey('clr'); }
+    else if (e.key === 'Enter')        { e.preventDefault(); modalPressKey('ok'); }
+    else if (e.key === 'Tab')          { e.preventDefault(); modalSetFocus(modalFocus === 'bpt' ? 'act' : 'bpt'); }
+    else if (e.key === 'Escape')       { e.preventDefault(); closeModal(); }
+  });
+
+  // ─── Transport Controls ───
+  var btnPlay     = document.getElementById('btn-play');
+  var btnPauseBpt = document.getElementById('btn-pause-bpt');
+  var btnResetBpt = document.getElementById('btn-reset-bpt');
+  var vfdTop      = document.querySelector('.vfd-top');
+
+  function updateTransport() {
+    var running = bptActive && !bptPaused;
+    btnPlay.classList.toggle('active', running);
+    btnPauseBpt.classList.toggle('active', bptPaused);
+    vfdTop.classList.toggle('bpt-running', running);
+  }
+
+  function bptPlay() {
+    if (bptActive) return;
+    if (bptPaused) {
+      // Resume from where it was paused
+      bptEnd      = Date.now() + bptActualRemaining;
+      bptActive   = true;
+      bptPaused   = false;
+      bptInterval = setInterval(bptTick, 100);
+    } else {
+      // Fresh start from last set values
+      if (bptLastDisplaySec <= 0) return;
+      bptDisplayTotal    = bptLastDisplaySec;
+      bptActualTotal     = bptLastActualSec;
+      bptActualRemaining = bptLastActualSec * 1000;
+      bptEnd             = Date.now() + bptActualRemaining;
+      bptActive          = true;
+      bptPaused          = false;
+      bptInterval        = setInterval(bptTick, 100);
+      if (appMode === 'timer') {
+        bptDisplay.textContent  = formatBpt(bptLastDisplaySec * 1000);
+        clockTimeEl.textContent = formatBpt(bptLastActualSec  * 1000);
+      }
+    }
+    updateTransport();
+  }
+
+  function bptPause() {
+    if (!bptActive || bptPaused) return;
+    clearInterval(bptInterval);
+    bptInterval = null;
+    bptActive   = false;
+    bptPaused   = true;
+    // bptActualRemaining is kept live by bptTick — already correct
+    updateTransport();
+  }
+
+  function bptReset() {
+    clearInterval(bptInterval);
+    bptInterval = null;
+    bptActive   = false;
+    bptPaused   = false;
+    bptActualRemaining = 0;
+    btnBptToggle.textContent = 'BPT';
+    btnBptToggle.classList.remove('active');
+    var dSec = bptLastDisplaySec;
+    var aSec = bptLastActualSec;
+    bptDisplayTotal = dSec;
+    bptActualTotal  = aSec;
+    if (appMode === 'timer') {
+      bptDisplay.textContent  = dSec > 0 ? formatBpt(dSec * 1000) : '00:00:00';
+      clockTimeEl.textContent = aSec > 0 ? formatBpt(aSec * 1000) : '00:00:00';
+    }
+    updateTransport();
+  }
+
+  btnPlay.addEventListener('click', bptPlay);
+  btnPauseBpt.addEventListener('click', bptPause);
+  btnResetBpt.addEventListener('click', bptReset);
+
+  // ─── Module Rack ───
+  var moduleCount = 0;
+  var moduleRack  = document.getElementById('module-rack');
+  var nmModal     = document.getElementById('new-module-modal');
+  var nmInput     = document.getElementById('nm-ratio-input');
+  var nmNameInput = document.getElementById('nm-name-input');
+
+  function openNewModuleModal() {
+    nmNameInput.value = '';
+    nmInput.value = '2';
+    nmModal.classList.add('open');
+    setTimeout(function() { nmNameInput.focus(); }, 50);
+  }
+  function closeNewModuleModal() { nmModal.classList.remove('open'); }
+
+  document.getElementById('nm-confirm').addEventListener('click', function() {
+    var name  = (nmNameInput.value.trim().toUpperCase() || 'PERSONAL TIME').slice(0,20);
+    var ratio = parseFloat(nmInput.value);
+    if (!ratio || ratio <= 0) return;
+    closeNewModuleModal();
+    createModule(name, ratio);
+  });
+  document.getElementById('nm-cancel').addEventListener('click', closeNewModuleModal);
+  nmModal.addEventListener('click', function(e) { if (e.target === nmModal) closeNewModuleModal(); });
+  nmNameInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); nmInput.focus(); nmInput.select(); }
+    if (e.key === 'Escape') closeNewModuleModal();
+  });
+  nmInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') document.getElementById('nm-confirm').click();
+    if (e.key === 'Escape') closeNewModuleModal();
+  });
+
+  document.getElementById('btn-new-module').addEventListener('click', openNewModuleModal);
+
+  function createModule(name, initRatio) {
+    moduleCount++;
+    var id    = moduleCount;
+    var label = 'AUX MODULE ' + (id < 10 ? '0' + id : '' + id);
+
+    // ── Separator ──
+    var sep = document.createElement('div');
+    sep.className = 'module-separator';
+    moduleRack.appendChild(sep);
+
+    // ── Module shell ──
+    var mod = document.createElement('div');
+    mod.className = 'rack-module';
+    mod.id = 'rack-module-' + id;
+    mod.innerHTML =
+      '<div class="module-header">' +
+        '<span class="module-label">' + label + '</span>' +
+        '<button class="mod-kill" title="Remove module">&times;</button>' +
+      '</div>' +
+      '<div class="vfd-wrap vfd-module">' +
+        '<div class="vfd-ghost">88:88</div>' +
+        '<div class="vfd-digits" id="mod-display-' + id + '">00:00</div>' +
+        '<div class="mod-progress-bar"><div class="mod-progress-fill" id="mod-progress-' + id + '"></div></div>' +
+      '</div>' +
+      '<div class="mini-knob-zone">' +
+        '<div class="mod-name-label">' + name + '</div>' +
+        '<div class="mini-knob-wrap" id="mini-knob-' + id + '">' +
+          '<div class="mini-knob-indicator"></div>' +
+          '<div class="mini-knob-hub"></div>' +
+        '</div>' +
+        '<div class="mod-ratio-label" id="mod-ratio-lbl-' + id + '">1 MIN MINE = ' + Math.round(initRatio) + ' MIN REAL</div>' +
+      '</div>' +
+      '<div class="transport-strip">' +
+        '<button class="transport-btn" id="mod-play-' + id + '" title="Play">&#9654;</button>' +
+        '<button class="transport-btn" id="mod-pause-' + id + '" title="Pause">&#9646;&#9646;</button>' +
+        '<button class="transport-btn" id="mod-reset-' + id + '" title="Reset">&#10227;</button>' +
+      '</div>';
+    moduleRack.appendChild(mod);
+
+    // ── Elements ──
+    var displayEl    = document.getElementById('mod-display-'   + id);
+    var progressFill = document.getElementById('mod-progress-'  + id);
+    var playBtn      = document.getElementById('mod-play-'       + id);
+    var pauseBtn     = document.getElementById('mod-pause-'      + id);
+    var resetBtn     = document.getElementById('mod-reset-'      + id);
+    var miniKnobEl   = document.getElementById('mini-knob-'      + id);
+    var ratioLbl     = document.getElementById('mod-ratio-lbl-'  + id);
+    var killBtn      = mod.querySelector('.mod-kill');
+
+    // ── Non-linear ratio scale: 1→5→25→30→45→60 real min per my min ──
+    var SCALE_STOPS  = [1, 5, 25, 30, 45, 60];
+    var STOP_ANGLES  = [-135, -81, -27, 27, 81, 135];
+
+    function angleToRatio(a) {
+      a = Math.max(-135, Math.min(135, a));
+      for (var i = 0; i < STOP_ANGLES.length - 1; i++) {
+        if (a <= STOP_ANGLES[i + 1]) {
+          var t = (a - STOP_ANGLES[i]) / (STOP_ANGLES[i + 1] - STOP_ANGLES[i]);
+          return SCALE_STOPS[i] + t * (SCALE_STOPS[i + 1] - SCALE_STOPS[i]);
+        }
+      }
+      return SCALE_STOPS[SCALE_STOPS.length - 1];
+    }
+    function ratioToAngle(r) {
+      r = Math.max(SCALE_STOPS[0], Math.min(SCALE_STOPS[SCALE_STOPS.length - 1], r));
+      for (var i = 0; i < SCALE_STOPS.length - 1; i++) {
+        if (r <= SCALE_STOPS[i + 1]) {
+          var t = (r - SCALE_STOPS[i]) / (SCALE_STOPS[i + 1] - SCALE_STOPS[i]);
+          return STOP_ANGLES[i] + t * (STOP_ANGLES[i + 1] - STOP_ANGLES[i]);
+        }
+      }
+      return STOP_ANGLES[SCALE_STOPS.length - 1];
+    }
+
+    var clamped = Math.max(SCALE_STOPS[0], Math.min(SCALE_STOPS[SCALE_STOPS.length - 1], initRatio));
+    var currentRatio = clamped;
+    var knobAngle    = ratioToAngle(clamped);
+
+    function applyKnobAngle(a) {
+      knobAngle    = Math.max(-135, Math.min(135, a));
+      currentRatio = angleToRatio(knobAngle);
+      miniKnobEl.style.transform = 'rotate(' + knobAngle.toFixed(1) + 'deg)';
+      ratioLbl.textContent = '1 MIN MINE = ' + Math.round(currentRatio) + ' MIN REAL';
+    }
+    applyKnobAngle(knobAngle); // set initial position
+
+    var knobDrag = null;
+    miniKnobEl.addEventListener('mousedown', function(e) {
+      e.preventDefault();
+      var r = miniKnobEl.getBoundingClientRect();
+      var cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      knobDrag = {
+        startAngle: Math.atan2(e.clientX - cx, -(e.clientY - cy)) * 180 / Math.PI,
+        startKnob:  knobAngle
+      };
+    });
+
+    function onKnobMove(e) {
+      if (!knobDrag) return;
+      var r = miniKnobEl.getBoundingClientRect();
+      var cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      var a = Math.atan2(e.clientX - cx, -(e.clientY - cy)) * 180 / Math.PI;
+      var delta = a - knobDrag.startAngle;
+      if (delta > 180) delta -= 360;
+      if (delta < -180) delta += 360;
+      applyKnobAngle(knobDrag.startKnob + delta);
+    }
+    function onKnobUp() { knobDrag = null; }
+
+    window.addEventListener('mousemove', onKnobMove);
+    window.addEventListener('mouseup',   onKnobUp);
+
+    // ── Independent timer state ──
+    var state = { running: false, paused: false, startReal: 0, accumulated: 0, interval: null };
+
+    function modTick() {
+      var realMs       = state.accumulated + (Date.now() - state.startReal);
+      var msPerMyMin   = currentRatio * 60000;          // real ms that must pass per 1 "my minute"
+      var myMinutes    = Math.floor(realMs / msPerMyMin);
+      var progress     = (realMs % msPerMyMin) / msPerMyMin; // 0→1 toward next flip
+      // Display HH:MM — only advances in whole-minute jumps (temporal lag)
+      displayEl.textContent = pad(Math.floor(myMinutes / 60)) + ':' + pad(myMinutes % 60);
+      // Progress bar crawls toward next minute flip
+      progressFill.style.width = (progress * 100).toFixed(1) + '%';
+    }
+    function modUpdateUI() {
+      playBtn.classList.toggle('active', state.running);
+      pauseBtn.classList.toggle('active', state.paused);
+      mod.classList.toggle('mod-active', state.running);
+    }
+
+    playBtn.addEventListener('click', function() {
+      if (state.running) return;
+      state.startReal = Date.now();
+      state.running = true; state.paused = false;
+      progressFill.style.transition = 'width .6s linear'; // restore smooth crawl
+      state.interval = setInterval(modTick, 250);
+      modUpdateUI();
+    });
+    pauseBtn.addEventListener('click', function() {
+      if (!state.running) return;
+      state.accumulated += Date.now() - state.startReal;
+      clearInterval(state.interval); state.interval = null;
+      state.running = false; state.paused = true;
+      progressFill.style.transition = 'none'; // freeze bar in place on pause
+      modUpdateUI();
+    });
+    resetBtn.addEventListener('click', function() {
+      clearInterval(state.interval); state.interval = null;
+      state.running = false; state.paused = false;
+      state.startReal = 0; state.accumulated = 0;
+      displayEl.textContent = '00:00';
+      progressFill.style.width = '0%';
+      modUpdateUI();
+    });
+
+    // ── Kill switch ──
+    killBtn.addEventListener('click', function() {
+      clearInterval(state.interval);
+      window.removeEventListener('mousemove', onKnobMove);
+      window.removeEventListener('mouseup',   onKnobUp);
+      if (sep.parentNode) sep.parentNode.removeChild(sep);
+      if (mod.parentNode) mod.parentNode.removeChild(mod);
+    });
+
+    mod.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+})();
+
+// ============================================================
+// VenturiFlow - Seamless Temporal Stream
+// ============================================================
+
+let particles = [];
+let PARTICLE_COUNT = 2800;
+let BASE_SPEED = 0.75;
+let THROAT_HEIGHT = 70;
+let isFading = false;
+let isWarping = false;
+
+function setup() {
+  let canvas = createCanvas(windowWidth, windowHeight);
+  canvas.parent('p5-canvas-holder');
+  textFont('Courier New');
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    particles.push(new Particle(true));
+  }
+}
+
+function draw() {
+  background(0, isFading ? 100 : 70);
+  for (let p of particles) {
+    p.update();
+    p.display();
+  }
+}
+
+function startTransition() {
+  const container = document.getElementById('splash-container');
+  container.classList.add('fade-out');
+  document.body.classList.add('app-active');
+  setTimeout(() => {
+    container.style.display = 'none';
+    noLoop();
+  }, 1600);
+}
+
+class Particle {
+  constructor(isInitial) {
+    this.init(isInitial);
+  }
+
+  init(isInitial) {
+    this.x = isInitial ? random(width) : random(-150, -10);
+    this.relY = random(-0.95, 0.95);
+    this.alpha = random(100, 210);
+    let h = nf(floor(random(24)), 2);
+    let m = nf(floor(random(60)), 2);
+    this.txt = h + ":" + m;
+    this.currentSpeed = BASE_SPEED;
+    this.warpSpeed = 0;
+    this.targetWarpSpeed = 0;
+  }
+
+  update() {
+    if (isWarping) {
+      this.currentSpeed = lerp(this.currentSpeed, this.targetWarpSpeed, 0.1);
+      this.x += this.currentSpeed;
+      let centerY = height / 2;
+      let distFromCenter = this.y - centerY;
+      this.y += distFromCenter * 0.05;
+      this.alpha -= 3;
+    } else {
+      let t = this.x / width;
+      let h = 75 + 85 * pow(cos(PI * t), 2);
+
+      let targetSpeed = (240 / h) * 1.6 * BASE_SPEED;
+      this.currentSpeed = lerp(this.currentSpeed, targetSpeed, 0.1);
+      this.x += this.currentSpeed;
+      this.y = height / 2 + (this.relY * h);
+
+      if (this.x > width + 50) this.init(false);
+    }
+  }
+
+  display() {
+    push();
+    translate(this.x, this.y);
+
+    if (isWarping) {
+      let zoom = map(this.x, 0, width * 1.5, 1, 15);
+      scale(zoom);
+      // Motion blur trail
+      fill(0, 255, 65, this.alpha * 0.5);
+      text(this.txt, -this.currentSpeed * 0.5, 0);
+    } else {
+      let inThroat = (this.x / width > 0.4 && this.x / width < 0.6);
+      if (inThroat) {
+        translate(random(-1, 1), 0);
+        fill(0, 255, 65, this.alpha + 40);
+      } else {
+        fill(0, 255, 65, this.alpha);
+      }
+    }
+
+    fill(0, 255, 65, this.alpha);
+    textSize(10);
+    textAlign(CENTER, CENTER);
+    text(this.txt, 0, 0);
+    pop();
+  }
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+}
+</script>
+</body>
+</html>
