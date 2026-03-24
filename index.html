@@ -1670,7 +1670,7 @@
     clockTimeEl.innerHTML = timeStr;
     // Top: current time + BPT offset from knob position
     var offsetSec = dilationModes[modeIdx].bptPreset || 0;
-    var offDate = new Date(now.getTime() + offsetSec * 1000);
+    var offDate = new Date(now.getTime() - offsetSec * 1000);
     var oh = offDate.getHours(), om = offDate.getMinutes(), os = offDate.getSeconds();
     var oampm = '';
     if (!use24) {
