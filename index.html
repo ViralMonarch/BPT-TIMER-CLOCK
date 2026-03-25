@@ -524,8 +524,24 @@
     text-shadow: 0 0 15px #00ff41;
   }
 
+  #splash-subtitle {
+    position: absolute;
+    top: 36px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: #ff9f00;
+    font-family: 'Courier New', monospace;
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: 10px;
+    text-transform: uppercase;
+    white-space: nowrap;
+    text-shadow: 0 0 12px #ff9f00, 0 0 24px rgba(255,159,0,0.4);
+    z-index: 10001;
+  }
+
   #enter-btn {
-    background: transparent;
+    background: rgba(0, 0, 0, 0.75);
     color: #00ff41;
     border: 1px solid #00ff41;
     padding: 15px 40px;
@@ -533,6 +549,7 @@
     cursor: pointer;
     letter-spacing: 5px;
     transition: all 0.4s;
+    box-shadow: 0 0 20px rgba(0,0,0,0.8);
   }
 
   #enter-btn:hover {
@@ -549,6 +566,17 @@
     .custom-input input { width: 52px; font-size: 1.1rem; padding: 8px 4px; }
     .custom-input .sep { font-size: 1.1rem; }
     .custom-input .multiplier-sep { font-size: 1.3rem; }
+  }
+
+  .transport-hint {
+    font-family: 'Courier New', monospace;
+    font-size: 0.48rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: rgba(0,255,156,.28);
+    text-align: center;
+    margin-top: 6px;
+    user-select: none;
   }
 
   /* ─── Hide old tabs ─── */
@@ -617,11 +645,13 @@
     font-size: .52rem;
     letter-spacing: 3px;
     text-transform: uppercase;
-    color: rgba(0,255,156,.3);
-    margin-top: 5px;
+    color: rgba(0,255,156,.75);
+    margin-top: 8px;
     position: relative;
     z-index: 1;
     user-select: none;
+    text-shadow: 0 0 6px rgba(0,255,156,.6), 0 0 18px rgba(0,255,156,.25), 0 0 40px rgba(0,255,156,.1);
+    transition: color .4s, text-shadow .4s;
   }
 
   .vfd-top .vfd-ghost,
@@ -637,8 +667,8 @@
     transition: color .4s, text-shadow .4s;
   }
   .vfd-top.bpt-running .vfd-label {
-    color: rgba(255,159,0,.35);
-    transition: color .4s;
+    color: rgba(255,159,0,.95);
+    text-shadow: 0 0 8px rgba(255,159,0,.75), 0 0 20px rgba(255,159,0,.35), 0 0 45px rgba(255,159,0,.15);
   }
 
   .vfd-bottom { margin-top: 24px; }
@@ -724,6 +754,11 @@
     transition: color 0.25s, text-shadow 0.25s;
     user-select: none;
     pointer-events: none;
+  }
+
+  .kl:not([data-mode]) {
+    color: rgba(0,255,156,.7);
+    text-shadow: 0 0 6px rgba(0,255,156,.55), 0 0 18px rgba(0,255,156,.2), 0 0 40px rgba(0,255,156,.08);
   }
 
   .kl.lit {
@@ -1433,6 +1468,7 @@
 
 <div id="splash-container">
   <div id="p5-canvas-holder"></div>
+  <p id="splash-subtitle">BLACK PEOPLE TIME</p>
   <div id="overlay-content">
     <h1 id="splash-title">BPT</h1>
     <button id="enter-btn" onclick="startTransition()">ENTER FLOW</button>
@@ -1475,17 +1511,17 @@
     <div class="vfd-wrap vfd-top">
       <div class="vfd-ghost">88:88:88</div>
       <div class="vfd-digits" id="bpt-display">00:00:00</div>
-      <div class="vfd-label">BPT</div>
+      <div class="vfd-label">BLACK PEOPLE TIME</div>
     </div>
 
     <!-- Knob zone -->
     <!-- Labels at radius ~95px from knob center (280×210 zone, center=140,105) -->
     <div class="knob-zone">
-      <span class="kl" style="left:50%;top:4%">BPT</span>
-      <span class="kl" data-mode="1" style="left:23%;top:17%">5</span>
-      <span class="kl" data-mode="2" style="left:77%;top:17%">30</span>
+      <span class="kl" style="left:50%;top:4%;font-size:0.6rem;letter-spacing:1px">TIME DILATOR</span>
+      <span class="kl" data-mode="1" style="left:23%;top:17%">5 MIN</span>
+      <span class="kl" data-mode="2" style="left:77%;top:17%">30 MIN</span>
       <span class="kl" data-mode="0" style="left:15%;top:83%">0</span>
-      <span class="kl" data-mode="3" style="left:85%;top:83%">60</span>
+      <span class="kl" data-mode="3" style="left:85%;top:83%">60 MIN</span>
       <div class="hw-knob" id="hw-knob">
         <div class="knob-indicator"></div>
         <div class="knob-hub"></div>
@@ -1498,6 +1534,7 @@
       <button class="transport-btn" id="btn-pause-bpt" title="Pause">&#9646;&#9646;</button>
       <button class="transport-btn" id="btn-reset-bpt" title="Reset">&#10227;</button>
     </div>
+    <div class="transport-hint">SET DELAY &rarr; PLAY TO RUN BPT COUNTDOWN</div>
 
     <!-- Real Clock (bottom, smaller) -->
     <div class="vfd-wrap vfd-bottom">
@@ -1735,11 +1772,14 @@
   hwKnob.addEventListener('click', function() {
     var next = (modeIdx + 1) % dilationModes.length;
     setKnobMode(next, true);
-    if (bptActive && bptDisplayTotal > 0) {
-      var ratio = bptActualRemaining / (bptActualTotal * 1000);
-      bptActualTotal = bptDisplayTotal / dilationModes[modeIdx].factor;
-      bptActualRemaining = bptActualTotal * 1000 * ratio;
-      bptEnd = Date.now() + bptActualRemaining;
+    if (bptActive) {
+      var d = dilationModes[modeIdx];
+      if (d.bptPreset > 0) {
+        bptDisplayTotal = d.bptPreset;
+        bptActualTotal = d.bptPreset / d.factor;
+        bptActualRemaining = bptActualTotal * 1000;
+        bptEnd = Date.now() + bptActualRemaining;
+      }
     }
   });
 
